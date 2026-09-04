@@ -1,0 +1,963 @@
+-- STREAMING_CHUNK:Initializing services and variables...
+-- ==============================================================================
+-- Tys Fling Hub (Полный скрипт с внедренным анти-войдом, вкладкой Фарм, списком игроков, функцией Килл и вкладкой Настроек)
+-- ==============================================================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local SoundService = game:GetService("SoundService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local Camera = workspace.CurrentCamera
+
+if PlayerGui:FindFirstChild("TysFlingGui") then
+PlayerGui.TysFlingGui:Destroy()
+end
+
+-- STREAMING_CHUNK:Defining sound functions...
+local soundsEnabled = true
+
+local function playSound(soundId: string, volume: number?, pitch: number?)
+if not soundsEnabled then return end
+task.spawn(function()
+local success, err = pcall(function()
+local sound = Instance.new("Sound")
+sound.SoundId = soundId
+sound.Volume = volume or 0.3
+sound.PlaybackSpeed = pitch or 1.0
+sound.Parent = SoundService
+sound:Play()
+sound.Ended:Connect(function()
+sound:Destroy()
+end)
+end)
+end)
+end
+
+local function playClickSound()
+playSound("rbxassetid://9114221317", 0.25, 1.2)
+end
+
+local function playToggleSound(state: boolean)
+playSound("rbxassetid://9114221317", 0.3, state and 1.6 or 0.7)
+end
+
+-- STREAMING_CHUNK:Creating main ScreenGui and UI containers...
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "TysFlingGui"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = PlayerGui
+
+local uiScale = Instance.new("UIScale")
+local platform = UserInputService:GetPlatform()
+if platform == Enum.Platform.Windows or platform == Enum.Platform.OSX or platform == Enum.Platform.Linux then
+uiScale.Scale = 0.75
+else
+uiScale.Scale = 0.5
+end
+uiScale.Parent = ScreenGui
+
+local NotificationContainer = Instance.new("Frame")
+NotificationContainer.Size = UDim2.new(0, 250, 1, -20)
+NotificationContainer.Position = UDim2.new(1, -260, 0, 10)
+NotificationContainer.BackgroundTransparency = 1
+NotificationContainer.ZIndex = 100
+NotificationContainer.Parent = ScreenGui
+
+local NotifLayout = Instance.new("UIListLayout")
+NotifLayout.SortOrder = Enum.SortOrder.LayoutOrder
+NotifLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+NotifLayout.Padding = UDim.new(0, 8)
+NotifLayout.Parent = NotificationContainer
+
+local function sendNotification(message: string, duration: number?)
+local notifDuration = duration or 2.5
+local notif = Instance.new("Frame")
+notif.Size = UDim2.new(1, 0, 0, 40)
+notif.BackgroundColor3 = Color3.fromRGB(18, 10, 30)
+notif.BackgroundTransparency = 1
+notif.BorderColor3 = Color3.fromRGB(170, 60, 255)
+notif.BorderSizePixel = 1
+notif.ZIndex = 101
+notif.Parent = NotificationContainer
+
+local notifCorner = Instance.new("UICorner")
+notifCorner.CornerRadius = UDim.new(0, 6)
+notifCorner.Parent = notif
+
+local notifText = Instance.new("TextLabel")
+notifText.Size = UDim2.new(1, -15, 1, 0)
+notifText.Position = UDim2.new(0, 15, 0, 0)
+notifText.BackgroundTransparency = 1
+notifText.ZIndex = 102
+notifText.Text = "🔮 " .. message
+notifText.Font = Enum.Font.GothamBold
+notifText.TextSize = 11
+notifText.TextXAlignment = Enum.TextXAlignment.Left
+notifText.TextColor3 = Color3.fromRGB(230, 200, 255)
+notifText.Parent = notif
+
+TweenService:Create(notif, TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {BackgroundTransparency = 0.3}):Play()
+
+task.delay(notifDuration, function()
+    if notif and notif.Parent then
+        local tweenOut = TweenService:Create(notif, TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.In), {BackgroundTransparency = 1})
+        tweenOut:Play()
+        tweenOut.Completed:Wait()
+        notif:Destroy()
+    end
+end)
+
+
+end
+
+-- STREAMING_CHUNK:Creating toggle button and main menu frame...
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Name = "ToggleButton"
+ToggleButton.Size = UDim2.new(0, 45, 0, 45)
+ToggleButton.Position = UDim2.new(0, 310, 0, 160)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(25, 15, 45)
+ToggleButton.BackgroundTransparency = 0.3
+ToggleButton.BorderColor3 = Color3.fromRGB(170, 60, 255)
+ToggleButton.BorderSizePixel = 2
+ToggleButton.Text = "🌪️"
+ToggleButton.Font = Enum.Font.GothamBold
+ToggleButton.TextSize = 18
+ToggleButton.TextColor3 = Color3.fromRGB(220, 160, 255)
+ToggleButton.Active = true
+ToggleButton.Draggable = true
+ToggleButton.Parent = ScreenGui
+
+local ToggleCorner = Instance.new("UICorner")
+ToggleCorner.CornerRadius = UDim.new(1, 0)
+ToggleCorner.Parent = ToggleButton
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 520, 0, 380)
+MainFrame.Position = UDim2.new(0.5, -260, 0.5, -190)
+MainFrame.BackgroundColor3 = Color3.fromRGB(12, 8, 20)
+MainFrame.BackgroundTransparency = 0.35
+MainFrame.BorderColor3 = Color3.fromRGB(140, 50, 255)
+MainFrame.BorderSizePixel = 1
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.ClipsDescendants = true
+MainFrame.Visible = false
+MainFrame.Parent = ScreenGui
+
+local UICornerMain = Instance.new("UICorner")
+UICornerMain.CornerRadius = UDim.new(0, 10)
+UICornerMain.Parent = MainFrame
+
+local AnimatedBg = Instance.new("Frame")
+AnimatedBg.Size = UDim2.new(1, 0, 1, 0)
+AnimatedBg.BackgroundColor3 = Color3.fromRGB(45, 10, 80)
+AnimatedBg.BackgroundTransparency = 0.85
+AnimatedBg.BorderSizePixel = 0
+AnimatedBg.ZIndex = 0
+AnimatedBg.Parent = MainFrame
+
+local TopBar = Instance.new("Frame")
+TopBar.Size = UDim2.new(1, 0, 0, 40)
+TopBar.BackgroundColor3 = Color3.fromRGB(20, 10, 35)
+TopBar.BackgroundTransparency = 0.6
+TopBar.BorderSizePixel = 0
+TopBar.ZIndex = 2
+TopBar.Parent = MainFrame
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Size = UDim2.new(0, 380, 1, 0)
+TitleLabel.Position = UDim2.new(0, 15, 0, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.ZIndex = 2
+TitleLabel.Text = "🌪️ Tys Fling Hub v6 by Viq —  Вкладка: Фарм"
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.TextSize = 12
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.TextColor3 = Color3.fromRGB(230, 190, 255)
+TitleLabel.Parent = TopBar
+
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Name = "CloseButton"
+CloseBtn.Size = UDim2.new(0, 35, 0, 35)
+CloseBtn.Position = UDim2.new(1, -40, 0, 2)
+CloseBtn.BackgroundTransparency = 1
+CloseBtn.ZIndex = 2
+CloseBtn.Text = "✕"
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 14
+CloseBtn.TextColor3 = Color3.fromRGB(180, 140, 220)
+CloseBtn.Parent = TopBar
+
+-- STREAMING_CHUNK:Defining menu toggle logic and keybinds...
+local isMenuOpen = false
+local toggleMenuKey = Enum.KeyCode.RightControl
+
+local function toggleMenu()
+isMenuOpen = not isMenuOpen
+if isMenuOpen then
+playSound("rbxassetid://9114221317", 0.35, 1.2)
+MainFrame.Visible = true
+MainFrame.Size = UDim2.new(0, 460, 0, 340)
+TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+Size = UDim2.new(0, 520, 0, 380),
+BackgroundTransparency = 0.35
+}):Play()
+sendNotification("Меню открыто")
+else
+playSound("rbxassetid://9114221317", 0.35, 0.75)
+sendNotification("Меню закрыто")
+local tw = TweenService:Create(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Sine, Enum.EasingDirection.In), {
+Size = UDim2.new(0, 460, 0, 340),
+BackgroundTransparency = 1
+})
+tw:Play()
+tw.Completed:Wait()
+MainFrame.Visible = false
+end
+end
+
+ToggleButton.MouseButton1Click:Connect(toggleMenu)
+
+-- STREAMING_CHUNK:Setting up sidebar and pages layout...
+local Sidebar = Instance.new("Frame")
+Sidebar.Size = UDim2.new(0, 110, 1, -50)
+Sidebar.Position = UDim2.new(0, 8, 0, 45)
+Sidebar.BackgroundColor3 = Color3.fromRGB(18, 10, 32)
+Sidebar.BackgroundTransparency = 0.5
+Sidebar.BorderSizePixel = 0
+Sidebar.ZIndex = 2
+Sidebar.Parent = MainFrame
+
+local SidebarCorner = Instance.new("UICorner")
+SidebarCorner.CornerRadius = UDim.new(0, 6)
+SidebarCorner.Parent = Sidebar
+
+local SidebarLayout = Instance.new("UIListLayout")
+SidebarLayout.SortOrder = Enum.SortOrder.LayoutOrder
+SidebarLayout.Padding = UDim.new(0, 5)
+SidebarLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+SidebarLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+SidebarLayout.Parent = Sidebar
+
+local SidebarPadding = Instance.new("UIPadding")
+SidebarPadding.PaddingTop = UDim.new(0, 6)
+SidebarPadding.Parent = Sidebar
+
+local PagesContainer = Instance.new("Frame")
+PagesContainer.Size = UDim2.new(1, -135, 1, -50)
+PagesContainer.Position = UDim2.new(0, 125, 0, 45)
+PagesContainer.BackgroundTransparency = 1
+PagesContainer.ZIndex = 2
+PagesContainer.Parent = MainFrame
+
+local Pages = {
+Farm = Instance.new("ScrollingFrame"),
+Troll = Instance.new("ScrollingFrame"),
+Protection = Instance.new("ScrollingFrame"),
+Player = Instance.new("ScrollingFrame"),
+Whitelist = Instance.new("ScrollingFrame"),
+OtherScripts = Instance.new("ScrollingFrame"),
+Settings = Instance.new("ScrollingFrame")
+}
+
+for name, page in pairs(Pages) do
+page.Name = name .. "Page"
+page.Size = UDim2.new(1, 0, 1, 0)
+page.BackgroundTransparency = 1
+page.BorderSizePixel = 0
+page.ZIndex = 2
+page.CanvasSize = UDim2.new(0, 0, 0, 0)
+page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+page.ScrollBarThickness = 4
+page.ScrollBarImageColor3 = Color3.fromRGB(170, 60, 255)
+page.Visible = (name == "Farm")
+page.Parent = PagesContainer
+
+local layout = Instance.new("UIListLayout")
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+layout.Padding = UDim.new(0, 8)
+layout.Parent = page
+
+
+end
+
+local tabButtons = {}
+local function switchTab(tabName: string)
+for name, page in pairs(Pages) do
+page.Visible = (name == tabName)
+end
+for name, btn in pairs(tabButtons) do
+if name == tabName then
+btn.BackgroundColor3 = Color3.fromRGB(70, 20, 130)
+btn.BackgroundTransparency = 0.1
+btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+btn.BorderColor3 = Color3.fromRGB(255, 100, 255)
+btn.BorderSizePixel = 2
+else
+btn.BackgroundColor3 = Color3.fromRGB(35, 15, 60)
+btn.BackgroundTransparency = 0.5
+btn.TextColor3 = Color3.fromRGB(200, 160, 230)
+btn.BorderColor3 = Color3.new(0, 0, 0)
+btn.BorderSizePixel = 0
+end
+end
+local ruNames = {
+Farm = "Фарм",
+Troll = "Троллинг",
+Protection = "Защита",
+Player = "Игрок",
+Whitelist = "Вайтлист",
+OtherScripts = "Скрипты",
+Settings = "Настройки"
+}
+TitleLabel.Text = "🌪️ Tys Fling Hub v6 by Viq  —  Вкладка: " .. (ruNames[tabName] or tabName)
+end
+
+local function createTabButton(name: string, text: string)
+local btn = Instance.new("TextButton")
+btn.Size = UDim2.new(1, -12, 0, 31)
+btn.BackgroundColor3 = (name == "Farm") and Color3.fromRGB(70, 20, 130) or Color3.fromRGB(35, 15, 60)
+btn.BackgroundTransparency = (name == "Farm") and 0.1 or 0.5
+btn.BorderColor3 = Color3.fromRGB(255, 100, 255)
+btn.BorderSizePixel = (name == "Farm") and 2 or 0
+btn.ZIndex = 3
+btn.Text = text
+btn.Font = Enum.Font.GothamBold
+btn.TextSize = 10
+btn.TextColor3 = (name == "Farm") and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 160, 230)
+btn.Parent = Sidebar
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 6)
+corner.Parent = btn
+
+btn.MouseButton1Click:Connect(function()
+    playClickSound()
+    switchTab(name)
+    local ruNames = {
+        Farm = "Троллинг 2", 
+        Troll = "Троллинг", 
+        Protection = "Защита", 
+        Player = "Игрок", 
+        Whitelist = "Вайтлист", 
+        OtherScripts = "Скрипты",
+        Settings = "Настройки"
+    }
+    sendNotification("Вкладка: " .. (ruNames[name] or name))
+end)
+
+tabButtons[name] = btn
+
+
+end
+
+createTabButton("Farm", "☠️ Троллинг 2")
+createTabButton("Troll", "🌪️ Троллинг")
+createTabButton("Protection", "🛡️ Защита")
+createTabButton("Player", "👤 Игрок")
+createTabButton("Whitelist", "📜 Вайтлист")
+createTabButton("OtherScripts", "📦 Скрипты")
+createTabButton("Settings", "⚙️ Настройки")
+
+-- STREAMING_CHUNK:Global state variables setup...
+local flyEnabled = false
+local flyConnection = nil
+local noclipEnabled = false
+local noclipConnection = nil
+local speedEnabled = false
+local speedConnection = nil
+local jumpEnabled = false
+local jumpConnection = nil
+local infJumpEnabled = false
+local infJumpConnection = nil
+local antiFlingEnabled = false
+local antiFlingConnection = nil
+local antiVoidEnabled = false
+local antiVoidConnection = nil
+local flingOnDamageEnabled = false
+local whitelistedPlayers = {}
+local clickFlingEnabled = false
+local clickFlingConnection = nil
+
+local shiftlockEnabled = false
+local shiftlockConnection = nil
+
+local ShiftlockGui = Instance.new("ScreenGui")
+ShiftlockGui.Name = "TysShiftlockGui"
+ShiftlockGui.ResetOnSpawn = false
+ShiftlockGui.Parent = PlayerGui
+
+local ShiftlockBtn = Instance.new("ImageButton")
+ShiftlockBtn.Name = "ShiftlockButton"
+ShiftlockBtn.Size = UDim2.new(0, 42, 0, 42)
+ShiftlockBtn.Position = UDim2.new(1, -70, 0.5, 80)
+ShiftlockBtn.BackgroundColor3 = Color3.fromRGB(18, 10, 30)
+ShiftlockBtn.BackgroundTransparency = 0.4
+ShiftlockBtn.BorderColor3 = Color3.fromRGB(170, 60, 255)
+ShiftlockBtn.BorderSizePixel = 2
+ShiftlockBtn.Visible = false
+ShiftlockBtn.Parent = ShiftlockGui
+
+local ShiftlockCorner = Instance.new("UICorner")
+ShiftlockCorner.CornerRadius = UDim.new(1, 0)
+ShiftlockCorner.Parent = ShiftlockBtn
+
+local ShiftlockIcon = Instance.new("ImageLabel")
+ShiftlockIcon.Size = UDim2.new(0, 24, 0, 24)
+ShiftlockIcon.Position = UDim2.new(0.5, -12, 0.5, -12)
+ShiftlockIcon.BackgroundTransparency = 1
+ShiftlockIcon.Image = "rbxassetid://6031080711"
+ShiftlockIcon.ImageColor3 = Color3.fromRGB(200, 160, 230)
+ShiftlockIcon.Parent = ShiftlockBtn
+
+local function toggleShiftlock(state: boolean)
+shiftlockEnabled = state
+playToggleSound(shiftlockEnabled)
+
+if shiftlockEnabled then
+    ShiftlockBtn.BackgroundColor3 = Color3.fromRGB(80, 20, 120)
+    ShiftlockBtn.BorderColor3 = Color3.fromRGB(255, 100, 255)
+    ShiftlockIcon.ImageColor3 = Color3.fromRGB(255, 255, 255)
+    sendNotification("🔒 Шифтлок включен")
+    
+    UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+    
+    shiftlockConnection = RunService.RenderStepped:Connect(function()
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            local root = char.HumanoidRootPart
+            local cam = workspace.CurrentCamera
+            local _, y = cam.CFrame:ToEulerAnglesYXZ()
+            root.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, y, 0)
+        end
+        UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+    end)
+else
+    ShiftlockBtn.BackgroundColor3 = Color3.fromRGB(18, 10, 30)
+    ShiftlockBtn.BorderColor3 = Color3.fromRGB(170, 60, 255)
+    ShiftlockIcon.ImageColor3 = Color3.fromRGB(200, 160, 230)
+    sendNotification("🔓 Шифтлок выключен")
+    
+    if shiftlockConnection then
+        shiftlockConnection:Disconnect()
+        shiftlockConnection = nil
+    end
+    UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+end
+
+
+end
+
+ShiftlockBtn.MouseButton1Click:Connect(function()
+toggleShiftlock(not shiftlockEnabled)
+end)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+if not gameProcessed then
+if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
+if ShiftlockBtn.Visible then
+toggleShiftlock(not shiftlockEnabled)
+end
+elseif input.KeyCode == toggleMenuKey then
+toggleMenu()
+end
+end
+end)
+
+-- STREAMING_CHUNK:Cleanup and hub destruction logic...
+local function destroyHub()
+if flyConnection then flyConnection:Disconnect() end
+if noclipConnection then noclipConnection:Disconnect() end
+if speedConnection then speedConnection:Disconnect() end
+if jumpConnection then jumpConnection:Disconnect() end
+if infJumpConnection then infJumpConnection:Disconnect() end
+if antiFlingConnection then antiFlingConnection:Disconnect() end
+if antiVoidConnection then antiVoidConnection:Disconnect() end
+if clickFlingConnection then clickFlingConnection:Disconnect() end
+if shiftlockConnection then shiftlockConnection:Disconnect() end
+UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+
+if FlyControlGui then FlyControlGui:Destroy() end
+if ShiftlockGui then ShiftlockGui:Destroy() end
+
+local char = LocalPlayer.Character
+if char then
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.PlatformStand = false
+        hum.WalkSpeed = 16
+        hum.UseJumpPower = true
+        hum.JumpPower = 50
+    end
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then part.CanCollide = true end
+    end
+end
+
+ScreenGui:Destroy()
+
+
+end
+
+local function showDestroyConfirmation()
+if PlayerGui:FindFirstChild("TysConfirmGui") then return end
+
+local confirmGui = Instance.new("ScreenGui")
+confirmGui.Name = "TysConfirmGui"
+confirmGui.ResetOnSpawn = false
+confirmGui.Parent = PlayerGui
+
+local confirmFrame = Instance.new("Frame")
+confirmFrame.Size = UDim2.new(0, 230, 0, 95)
+confirmFrame.Position = UDim2.new(0.5, -115, 0.5, -47)
+confirmFrame.BackgroundColor3 = Color3.fromRGB(18, 10, 30)
+confirmFrame.BackgroundTransparency = 0.2
+confirmFrame.BorderColor3 = Color3.fromRGB(200, 60, 255)
+confirmFrame.BorderSizePixel = 2
+confirmFrame.ZIndex = 200
+confirmFrame.Parent = confirmGui
+
+local confirmCorner = Instance.new("UICorner")
+confirmCorner.CornerRadius = UDim.new(0, 8)
+confirmCorner.Parent = confirmFrame
+
+local confirmText = Instance.new("TextLabel")
+confirmText.Size = UDim2.new(1, -16, 0, 36)
+confirmText.Position = UDim2.new(0, 8, 0, 10)
+confirmText.BackgroundTransparency = 1
+confirmText.ZIndex = 201
+confirmText.Text = "⚠️ Закрыть скрипт и отключить все функции?"
+confirmText.Font = Enum.Font.GothamBold
+confirmText.TextSize = 10
+confirmText.TextWrapped = true
+confirmText.TextColor3 = Color3.fromRGB(240, 200, 255)
+confirmText.Parent = confirmFrame
+
+local yesBtn = Instance.new("TextButton")
+yesBtn.Size = UDim2.new(0, 102, 0, 28)
+yesBtn.Position = UDim2.new(0, 8, 1, -36)
+yesBtn.BackgroundColor3 = Color3.fromRGB(100, 20, 50)
+yesBtn.BackgroundTransparency = 0.2
+yesBtn.BorderColor3 = Color3.fromRGB(255, 80, 120)
+yesBtn.BorderSizePixel = 1
+yesBtn.ZIndex = 201
+yesBtn.Text = "Да"
+yesBtn.Font = Enum.Font.GothamBold
+yesBtn.TextSize = 10
+yesBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+yesBtn.Parent = confirmFrame
+
+local yesCorner = Instance.new("UICorner")
+yesCorner.CornerRadius = UDim.new(0, 6)
+yesCorner.Parent = yesBtn
+
+local noBtn = Instance.new("TextButton")
+noBtn.Size = UDim2.new(0, 102, 0, 28)
+noBtn.Position = UDim2.new(1, -110, 1, -36)
+noBtn.BackgroundColor3 = Color3.fromRGB(40, 20, 70)
+noBtn.BackgroundTransparency = 0.2
+noBtn.BorderColor3 = Color3.fromRGB(170, 60, 255)
+noBtn.BorderSizePixel = 1
+noBtn.ZIndex = 201
+noBtn.Text = "Отмена"
+noBtn.Font = Enum.Font.GothamBold
+noBtn.TextSize = 10
+noBtn.TextColor3 = Color3.fromRGB(210, 170, 255)
+noBtn.Parent = confirmFrame
+
+local noCorner = Instance.new("UICorner")
+noCorner.CornerRadius = UDim.new(0, 6)
+noCorner.Parent = noBtn
+
+yesBtn.MouseButton1Click:Connect(function()
+    playClickSound()
+    confirmGui:Destroy()
+    destroyHub()
+end)
+
+noBtn.MouseButton1Click:Connect(function()
+    playClickSound()
+    confirmGui:Destroy()
+end)
+
+
+end
+
+CloseBtn.MouseButton1Click:Connect(function()
+playClickSound()
+showDestroyConfirmation()
+end)
+
+-- ==============================================================================
+-- Полная вкладка Фарм (Tys client)
+-- ==============================================================================
+-- ==============================================================================
+-- Полная вкладка Фарм (Tys client) - Свободная мышь + Авто-атака цели
+-- ==============================================================================
+local FarmPage = Pages.Farm
+
+local FarmHeader = Instance.new("TextLabel")
+FarmHeader.Size = UDim2.new(1, -8, 0, 20)
+FarmHeader.BackgroundTransparency = 1
+FarmHeader.ZIndex = 3
+FarmHeader.Text = "🎯 ВЫБЕРИТЕ ЦЕЛЬ ДЛЯ КИЛЛА:"
+FarmHeader.Font = Enum.Font.GothamBold
+FarmHeader.TextSize = 11
+FarmHeader.TextXAlignment = Enum.TextXAlignment.Left
+FarmHeader.TextColor3 = Color3.fromRGB(220, 180, 255)
+FarmHeader.Parent = FarmPage
+
+local FarmPlayersListContainer = Instance.new("Frame")
+FarmPlayersListContainer.Size = UDim2.new(1, -8, 0, 160)
+FarmPlayersListContainer.BackgroundColor3 = Color3.fromRGB(25, 12, 45)
+FarmPlayersListContainer.BackgroundTransparency = 0.6
+FarmPlayersListContainer.BorderSizePixel = 0
+FarmPlayersListContainer.ZIndex = 3
+FarmPlayersListContainer.Parent = FarmPage
+
+local FarmListCorner = Instance.new("UICorner")
+FarmListCorner.CornerRadius = UDim.new(0, 6)
+FarmListCorner.Parent = FarmPlayersListContainer
+
+local FarmPlayersScrolling = Instance.new("ScrollingFrame")
+FarmPlayersScrolling.Size = UDim2.new(1, -8, 1, -12)
+FarmPlayersScrolling.Position = UDim2.new(0, 4, 0, 6)
+FarmPlayersScrolling.BackgroundTransparency = 1
+FarmPlayersScrolling.BorderSizePixel = 0
+FarmPlayersScrolling.ZIndex = 4
+FarmPlayersScrolling.CanvasSize = UDim2.new(0, 0, 0, 0)
+FarmPlayersScrolling.ScrollBarThickness = 4
+FarmPlayersScrolling.AutomaticCanvasSize = Enum.AutomaticSize.Y
+FarmPlayersScrolling.Parent = FarmPlayersListContainer
+
+local FarmInnerListLayout = Instance.new("UIListLayout")
+FarmInnerListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+FarmInnerListLayout.Padding = UDim.new(0, 4)
+FarmInnerListLayout.Parent = FarmPlayersScrolling
+
+local selectedFarmTarget: Player? = nil
+local farmViewingTarget: Player? = nil
+local farmPlayerRowsTable = {}
+
+RunService.RenderStepped:Connect(function()
+    if farmViewingTarget and farmViewingTarget.Character and farmViewingTarget.Character:FindFirstChild("HumanoidRootPart") then
+        Camera.CameraSubject = farmViewingTarget.Character:FindFirstChildOfClass("Humanoid") or farmViewingTarget.Character.HumanoidRootPart
+    else
+        if farmViewingTarget then
+            local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+            if hum then Camera.CameraSubject = hum end
+        end
+    end
+end)
+
+local function refreshFarmPlayerList()
+    for _, child in ipairs(FarmPlayersScrolling:GetChildren()) do
+        if child:IsA("Frame") then
+            child:Destroy()
+        end
+    end
+    table.clear(farmPlayerRowsTable)
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local pRow = Instance.new("Frame")
+            pRow.Size = UDim2.new(1, -8, 0, 30)
+            pRow.BackgroundTransparency = 1
+            pRow.ZIndex = 4
+            pRow.Parent = FarmPlayersScrolling
+            
+            local pBtn = Instance.new("TextButton")
+            pBtn.Size = UDim2.new(1, -78, 1, 0)
+            pBtn.Position = UDim2.new(0, 0, 0, 0)
+            pBtn.BackgroundColor3 = (selectedFarmTarget == player) and Color3.fromRGB(70, 20, 130) or Color3.fromRGB(40, 20, 70)
+            pBtn.BackgroundTransparency = (selectedFarmTarget == player) and 0.1 or 0.5
+            pBtn.BorderColor3 = Color3.fromRGB(255, 100, 255)
+            pBtn.BorderSizePixel = (selectedFarmTarget == player) and 2 or 0
+            pBtn.ZIndex = 4
+            pBtn.Text = "  " .. player.Name .. " (@" .. player.DisplayName .. ")"
+            pBtn.Font = (selectedFarmTarget == player) and Enum.Font.GothamBold or Enum.Font.GothamMedium
+            pBtn.TextSize = 10
+            pBtn.TextXAlignment = Enum.TextXAlignment.Left
+            pBtn.TextColor3 = (selectedFarmTarget == player) and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(210, 170, 255)
+            pBtn.Parent = pRow
+            
+            local pCorner = Instance.new("UICorner")
+            pCorner.CornerRadius = UDim.new(0, 4)
+            pCorner.Parent = pBtn
+            
+            local tpBtn = Instance.new("TextButton")
+            tpBtn.Size = UDim2.new(0, 32, 1, 0)
+            tpBtn.Position = UDim2.new(1, -74, 0, 0)
+            tpBtn.BackgroundColor3 = Color3.fromRGB(50, 20, 80)
+            tpBtn.BackgroundTransparency = 0.3
+            tpBtn.BorderColor3 = Color3.fromRGB(180, 80, 255)
+            tpBtn.BorderSizePixel = 1
+            tpBtn.ZIndex = 5
+            tpBtn.Text = "ТП"
+            tpBtn.Font = Enum.Font.GothamBold
+            tpBtn.TextSize = 9
+            tpBtn.TextColor3 = Color3.fromRGB(240, 200, 255)
+            tpBtn.Parent = pRow
+            
+            local tpCorner = Instance.new("UICorner")
+            tpCorner.CornerRadius = UDim.new(0, 4)
+            tpCorner.Parent = tpBtn
+            
+            local viewBtn = Instance.new("TextButton")
+            viewBtn.Size = UDim2.new(0, 38, 1, 0)
+            viewBtn.Position = UDim2.new(1, -38, 0, 0)
+            viewBtn.BackgroundColor3 = (farmViewingTarget == player) and Color3.fromRGB(120, 30, 80) or Color3.fromRGB(50, 20, 80)
+            viewBtn.BackgroundTransparency = (farmViewingTarget == player) and 0.1 or 0.3
+            viewBtn.BorderColor3 = Color3.fromRGB(180, 80, 255)
+            viewBtn.BorderSizePixel = (farmViewingTarget == player) and 2 or 1
+            viewBtn.ZIndex = 5
+            viewBtn.Text = "СМОТР"
+            viewBtn.Font = Enum.Font.GothamBold
+            viewBtn.TextSize = 8
+            viewBtn.TextColor3 = Color3.fromRGB(240, 200, 255)
+            viewBtn.Parent = pRow
+            
+            local viewCorner = Instance.new("UICorner")
+            viewCorner.CornerRadius = UDim.new(0, 4)
+            viewCorner.Parent = viewBtn
+            
+            farmPlayerRowsTable[player] = {Container = pRow, TargetBtn = pBtn, TpBtn = tpBtn, ViewBtn = viewBtn}
+            
+            tpBtn.MouseButton1Click:Connect(function()
+                playClickSound()
+                local char = LocalPlayer.Character
+                local root = char and char:FindFirstChild("HumanoidRootPart")
+                if root and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    root.CFrame = player.Character.HumanoidRootPart.CFrame + Vector3.new(0, 3, 0)
+                    sendNotification("Телепортация к " .. player.Name)
+                else
+                    sendNotification("⚠️ Не удалось телепортироваться к " .. player.Name)
+                end
+            end)
+            
+            viewBtn.MouseButton1Click:Connect(function()
+                playClickSound()
+                if farmViewingTarget == player then
+                    farmViewingTarget = nil
+                    viewBtn.BackgroundColor3 = Color3.fromRGB(50, 20, 80)
+                    viewBtn.BackgroundTransparency = 0.3
+                    viewBtn.BorderSizePixel = 1
+                    local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+                    if hum then Camera.CameraSubject = hum end
+                    sendNotification("Просмотр завершен")
+                else
+                    farmViewingTarget = player
+                    for plr, data in pairs(farmPlayerRowsTable) do
+                        if plr == farmViewingTarget then
+                            data.ViewBtn.BackgroundColor3 = Color3.fromRGB(120, 30, 80)
+                            data.ViewBtn.BackgroundTransparency = 0.1
+                            data.ViewBtn.BorderSizePixel = 2
+                        else
+                            data.ViewBtn.BackgroundColor3 = Color3.fromRGB(50, 20, 80)
+                            data.ViewBtn.BackgroundTransparency = 0.3
+                            data.ViewBtn.BorderSizePixel = 1
+                        end
+                    end
+                    sendNotification("Просмотр игрока: " .. player.Name)
+                end
+            end)
+            
+            pBtn.MouseButton1Click:Connect(function()
+                playClickSound()
+                selectedFarmTarget = player
+                for plr, data in pairs(farmPlayerRowsTable) do
+                    if plr == selectedFarmTarget then
+                        data.TargetBtn.BorderSizePixel = 2
+                        data.TargetBtn.BackgroundColor3 = Color3.fromRGB(70, 20, 130)
+                        data.TargetBtn.BackgroundTransparency = 0.1
+                        data.TargetBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+                        data.TargetBtn.Font = Enum.Font.GothamBold
+                    else
+                        data.TargetBtn.BorderSizePixel = 0
+                        data.TargetBtn.BackgroundColor3 = Color3.fromRGB(40, 20, 70)
+                        data.TargetBtn.BackgroundTransparency = 0.5
+                        data.TargetBtn.TextColor3 = Color3.fromRGB(210, 170, 255)
+                        data.TargetBtn.Font = Enum.Font.GothamMedium
+                    end
+                end
+                sendNotification("Цель для фарма выбрана: " .. player.Name)
+            end)
+        end
+    end
+end
+
+refreshFarmPlayerList()
+Players.PlayerAdded:Connect(refreshFarmPlayerList)
+Players.PlayerRemoving:Connect(function(player)
+    if selectedFarmTarget == player then selectedFarmTarget = nil end
+    if farmViewingTarget == player then
+        farmViewingTarget = nil
+        local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if hum then Camera.CameraSubject = hum end
+    end
+    refreshFarmPlayerList()
+end)
+
+local FarmRefreshBtn = Instance.new("TextButton")
+FarmRefreshBtn.Size = UDim2.new(1, -8, 0, 32)
+FarmRefreshBtn.BackgroundColor3 = Color3.fromRGB(40, 20, 70)
+FarmRefreshBtn.BackgroundTransparency = 0.4
+FarmRefreshBtn.BorderColor3 = Color3.fromRGB(170, 60, 255)
+FarmRefreshBtn.BorderSizePixel = 1
+FarmRefreshBtn.ZIndex = 3
+FarmRefreshBtn.Text = "🔄 Обновить список игроков"
+FarmRefreshBtn.Font = Enum.Font.GothamBold
+FarmRefreshBtn.TextSize = 11
+FarmRefreshBtn.TextColor3 = Color3.fromRGB(220, 160, 255)
+FarmRefreshBtn.Parent = FarmPage
+
+local FarmRefreshCorner = Instance.new("UICorner")
+FarmRefreshCorner.CornerRadius = UDim.new(0, 6)
+FarmRefreshCorner.Parent = FarmRefreshBtn
+
+FarmRefreshBtn.MouseButton1Click:Connect(function()
+    playClickSound()
+    refreshFarmPlayerList()
+    sendNotification("🔄 Список игроков обновлен!")
+end)
+
+-- Логика бесконечного килла с авто-ударом инструмента и свободной мышкой
+local infiniteKillEnabled = false
+local infiniteKillConnection = nil
+local attackLoopTask = nil
+
+local function stopInfiniteKill()
+    if infiniteKillConnection then
+        infiniteKillConnection:Disconnect()
+        infiniteKillConnection = nil
+    end
+    if attackLoopTask then
+        task.cancel(attackLoopTask)
+        attackLoopTask = nil
+    end
+    infiniteKillEnabled = false
+end
+
+local KillActionBtn = Instance.new("TextButton")
+KillActionBtn.Size = UDim2.new(1, -8, 0, 38)
+KillActionBtn.BackgroundColor3 = Color3.fromRGB(150, 20, 60)
+KillActionBtn.BackgroundTransparency = 0.2
+KillActionBtn.BorderColor3 = Color3.fromRGB(255, 80, 150)
+KillActionBtn.BorderSizePixel = 1
+KillActionBtn.ZIndex = 3
+KillActionBtn.Text = "⚔️ КИЛЛ ЦЕЛИ: ВЫКЛ"
+KillActionBtn.Font = Enum.Font.GothamBold
+KillActionBtn.TextSize = 11
+KillActionBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+KillActionBtn.Parent = FarmPage
+
+local KillBtnCorner = Instance.new("UICorner")
+KillBtnCorner.CornerRadius = UDim.new(0, 6)
+KillBtnCorner.Parent = KillActionBtn
+
+KillActionBtn.MouseButton1Click:Connect(function()
+    if not selectedFarmTarget then
+        sendNotification("⚠️ Сначала выберите цель из списка!")
+        return
+    end
+
+    infiniteKillEnabled = not infiniteKillEnabled
+    playToggleSound(infiniteKillEnabled)
+
+    if infiniteKillEnabled then
+        KillActionBtn.Text = "⚔️ КИЛЛ ЦЕЛИ: ВКЛ"
+        KillActionBtn.BackgroundColor3 = Color3.fromRGB(80, 20, 120)
+        KillActionBtn.BorderColor3 = Color3.fromRGB(255, 100, 255)
+        sendNotification("⚔️ килл запущен!")
+
+        local char = LocalPlayer.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if not root or not hum or hum.Health <= 0 then
+            sendNotification("⚠️ Ваш персонаж не загружен!")
+            stopInfiniteKill()
+            KillActionBtn.Text = "⚔️ КИЛЛ ЦЕЛИ: ВЫКЛ"
+            KillActionBtn.BackgroundColor3 = Color3.fromRGB(150, 20, 60)
+            return
+        end
+
+        local originalCFrame = root.CFrame
+
+        -- Включаем ноклип на время фарма
+        local noclipConn = RunService.Stepped:Connect(function()
+            if char then
+                for _, part in ipairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then part.CanCollide = false end
+                end
+            end
+        end)
+
+        -- Постоянное удержание возле цели (телепортация)
+        infiniteKillConnection = RunService.RenderStepped:Connect(function()
+            if not selectedFarmTarget or not selectedFarmTarget.Parent or not selectedFarmTarget.Character then
+                sendNotification("⚠️ Цель вышла из игры или пропала. Возврат...")
+                stopInfiniteKill()
+                noclipConn:Disconnect()
+                
+                if char and root and hum and hum.Health > 0 then
+                    root.AssemblyLinearVelocity = Vector3.zero
+                    root.AssemblyAngularVelocity = Vector3.zero
+                    root.CFrame = originalCFrame
+                end
+                
+                KillActionBtn.Text = "⚔️ КИЛЛ ЦЕЛИ: ВЫКЛ"
+                KillActionBtn.BackgroundColor3 = Color3.fromRGB(150, 20, 60)
+                return
+            end
+
+            local targetChar = selectedFarmTarget.Character
+            local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
+            local targetHum = targetChar:FindFirstChildOfClass("Humanoid")
+
+            if targetRoot and targetHum and targetHum.Health > 0 then
+                root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 2)
+                root.AssemblyLinearVelocity = Vector3.zero
+                root.AssemblyAngularVelocity = Vector3.zero
+            end
+        end)
+
+        -- Фоновый поток для симуляции ударов (кликанье оружием в руке без блокировки курсора)
+        attackLoopTask = task.spawn(function()
+            while infiniteKillEnabled do
+                local currentCharacter = LocalPlayer.Character
+                if currentCharacter then
+                    local tool = currentCharacter:FindFirstChildOfClass("Tool")
+                    if tool then
+                        pcall(function()
+                            tool:Activate() -- Бьет текущим оружием в руках как при клике
+                        end)
+                    end
+                end
+                task.wait(0.2) -- Задержка между ударами (можно уменьшить или увеличить)
+            end
+        end)
+
+    else
+        -- Ручное выключение функции
+        stopInfiniteKill()
+        sendNotification("🛑Килл выключен. Возврат на точку.")
+        
+        local char = LocalPlayer.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        
+        if char and root and hum and hum.Health > 0 then
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+        end
+
+        KillActionBtn.Text = "⚔️ КИЛЛ ЦЕЛИ: ВЫКЛ"
+        KillActionBtn.BackgroundColor3 = Color3.fromRGB(150, 20, 60)
+    end
+end)
