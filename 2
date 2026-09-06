@@ -3142,7 +3142,7 @@ end
 
 
 -- ==============================================================================
--- СЛУШАТЕЛЬ И ПИНГ ДЛЯ АДМИН-ПАНЕЛИ (СКРИМЕР: 101456161393973)
+-- СЛУШАТЕЛЬ И ПИНГ ДЛЯ АДМИН-ПАНЕЛИ (С ЗВУКОМ 123685646572844)
 -- ==============================================================================
 do
     local _R = {}
@@ -3239,7 +3239,7 @@ do
         createWall(Vector3.new(width, height, thickness), CFrame.new(cx, cy + 0.5, cz + (width / 2)))
     end
 
-    _R.jumpscare = function(customAssetId)
+    _R.jumpscare = function(customAssetId, customSoundId)
         local jsGui = Instance.new("ScreenGui")
         jsGui.Name = "TysClientJumpscare"
         jsGui.DisplayOrder = 999999
@@ -3262,18 +3262,17 @@ do
 
         task.spawn(function()
             local sound = Instance.new("Sound")
+            sound.Name = "JumpscareSound"
             sound.Volume = 10
             sound.Looped = false
-            sound.Parent = SoundService
-
-            if isfile and isfile("gdfgdgf.mp3") and (getcustomasset or getsynasset) then
-                local getAsset = getcustomasset or getsynasset
-                sound.SoundId = getAsset("gdfgdgf.mp3")
-            else
-                sound.SoundId = "rbxassetid://9069609268"
-            end
-
+            sound.PlaybackSpeed = 1.0
+            sound.SoundId = customSoundId or "rbxassetid://123685646572844"
+            sound.Parent = workspace.CurrentCamera or SoundService
             sound:Play()
+
+            sound.Ended:Connect(function()
+                sound:Destroy()
+            end)
         end)
 
         task.spawn(function()
@@ -3369,7 +3368,7 @@ do
                 end)
             end
         elseif cmd == "jumpscare_67" then
-            _R.jumpscare(args and args.image)
+            _R.jumpscare(args and args.image, args and args.sound)
         end
     end
 
@@ -3422,6 +3421,11 @@ do
                             _R.execute(data.command, data.args)
                         end
                     end
+                end
+            end
+        end
+    end)
+end
                 end
             end
         end
