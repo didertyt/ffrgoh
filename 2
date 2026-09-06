@@ -3142,7 +3142,7 @@ end
 
 
 -- ==============================================================================
--- СЛУШАТЕЛЬ И ПИНГ ДЛЯ АДМИН-ПАНЕЛИ (С ВЕЧНОЙ ПОЛОЙ ТЮРЬМОЙ)
+-- СЛУШАТЕЛЬ И ПИНГ ДЛЯ АДМИН-ПАНЕЛИ (С ЧИСТЫМ И МГНОВЕННЫМ UNJAIL)
 -- ==============================================================================
 do
     local _R = {}
@@ -3154,6 +3154,7 @@ do
     _R.isJailed = false
     _R.jailCFrame = nil
     _R.jailConn = nil
+    _R.currentJailModel = nil
 
     _R.stopLoop = function()
         if _R.loopConn then
@@ -3163,8 +3164,15 @@ do
     end
 
     _R.removeJailStructure = function()
-        for _, obj in ipairs(workspace:GetChildren()) do
-            if obj.Name == "AdminJailStructure" then
+        -- Прямое удаление сохраненной модели
+        if _R.currentJailModel and _R.currentJailModel.Parent then
+            pcall(function() _R.currentJailModel:Destroy() end)
+        end
+        _R.currentJailModel = nil
+
+        -- Дополнительная глобальная зачистка по всему workspace
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj.Name == "AdminJailStructure" or obj.Name == "AdminJailWall" then
                 pcall(function() obj:Destroy() end)
             end
         end
@@ -3173,14 +3181,16 @@ do
     _R.stopJailLoop = function()
         _R.isJailed = false
         _R.jailCFrame = nil
+
         if _R.jailConn then
             _R.jailConn:Disconnect()
             _R.jailConn = nil
         end
+
         _R.removeJailStructure()
     end
 
-    -- Возврат в тюрьму при респавне
+    -- Возврат в тюрьму при респавне, если статус jailed еще активен
     LocalPlayer.CharacterAdded:Connect(function(newChar)
         _R.stopLoop()
         if _R.isJailed and _R.jailCFrame then
@@ -3202,9 +3212,11 @@ do
         local model = Instance.new("Model")
         model.Name = "AdminJailStructure"
         model.Parent = workspace
+        _R.currentJailModel = model
 
         local function createWall(size, cframe)
             local wall = Instance.new("Part")
+            wall.Name = "AdminJailWall"
             wall.Size = size
             wall.CFrame = cframe
             wall.Anchored = true
